@@ -46,7 +46,7 @@ def prob_x_i_given_y(y, p_y):
         p_xi_0_given_y = 0  # p(x_i=0|y)
         for comb in combinations:
             c = list(comb)
-            c.insert(i, 1)  # insert x_i=0 at the relevant position
+            c.insert(i, 0)  # insert x_i=0 at the relevant position
             x = np.asarray(c)
             p_xi_0_given_y += prob_y_given_x(y, x) * p_x  # p(x_i=0|y) = sigma_over_x(p(y|x)*p(x))/p(y)
         p_x_0_given_y[i] = p_xi_0_given_y/p_y
@@ -59,19 +59,20 @@ def prob_q(prev_q_1, y):
 
     q_0 = np.zeros(k)  # q(x_i=0) for all x_i
     q_1 = np.zeros(k)  # q(x_i=1) for all x_i
+    q = prev_q_1.copy()
 
     for i in range(k):
-        prev_q_1_cpy = prev_q_1.copy()
-        prev_q_1_cpy[i] = 0  # replace the i-th value with 0
-        expr_0 = np.dot(A, prev_q_1_cpy) - y
+        q[i] = 0  # replace the i-th value with 0
+        expr_0 = np.dot(A, q) - y
         q_0[i] = np.exp((-1/2) * np.power(np.linalg.norm(expr_0), 2))
 
-        prev_q_1_cpy = prev_q_1.copy()
-        prev_q_1_cpy[i] = 1  # replace the i-th value with 1
-        expr_1 = np.dot(A, prev_q_1_cpy) - y
+        q[i] = 1  # replace the i-th value with 1
+        expr_1 = np.dot(A, q) - y
         q_1[i] = np.exp((-1/2) * np.power(np.linalg.norm(expr_1), 2))
 
-    return q_0/(q_0+q_1), q_1/(q_0+q_1)
+        q[i] = q_1[i]/(q_1[i] + q_0[i])
+
+    return 1-q, q
 
 
 # apply variational EM algorithm using mean field as approximation for p(x1,...,x6|y;theta) which is hard to estimate
@@ -97,7 +98,7 @@ def variational_EM(y):
             x = np.asarray(comb)
             q = np.where(x == 1, q_1, q_0)  # take from q_1 values corresponding to x_i=1, otherwise take from q_0
             prod_q = np.prod(q)
-            l += prod_q * np.log(prob_y_given_x(y, x) * p_x) - prod_q*np.log(prod_q)
+            l += prod_q * np.log(prob_y_given_x(y, x) * p_x) - (prod_q*np.log(prod_q))
 
         likelihood.append(l)
         delta = (likelihood[-1] - likelihood[-2]) if iter > 0 else 1
@@ -107,6 +108,23 @@ def variational_EM(y):
     return likelihood, q_0
 
 
+# plot likelihood and compare probabilities
+def output(p_y, p_x_0_given_y, p_x_1_given_y, likelihood, q_0):
+
+    print("log(p(y)): " + np.array2string(np.log(p_y)))
+    print("ELBO(q): " + str(likelihood[-1]))
+
+    print("p(x_i = 0|y): " + np.array2string(p_x_0_given_y))
+    print("q(x_i = 0): " + np.array2string(q_0))
+
+    print("p(x_i = 1|y): " + np.array2string(p_x_1_given_y))
+    print("q(x_i = 1): " + np.array2string(1 - q_0))
+
+    plt.plot(likelihood)
+    plt.ylabel('likelihood')
+    plt.xlabel('iterations')
+    plt.show()
+
 if __name__ == '__main__':
 
     y = np.asarray([2.64, 2.56])
@@ -114,3 +132,4 @@ if __name__ == '__main__':
     p_x_0_given_y = prob_x_i_given_y(y, p_y)
     p_x_1_given_y = 1 - p_x_0_given_y
     likelihood, q_0 = variational_EM(y)
+    output(p_y, p_x_0_given_y, p_x_1_given_y, likelihood, q_0)
